@@ -15,7 +15,7 @@
 """Code execution tools for Code Interpreter."""
 
 from ..models.responses import ExecutionResult
-from ..utils.aws_client import get_client
+from ..utils.aws_client import get_client, set_session_context
 from loguru import logger
 from typing import Any
 
@@ -101,7 +101,7 @@ async def execute_code(
         Dictionary with stdout, stderr, exit_code, is_error, content, and message.
     """
     client = get_client(region)
-    client.session_id = session_id
+    set_session_context(client, session_id)
 
     logger.info(f'Executing code in session {session_id} (language={language or "python"})')
 
@@ -155,7 +155,7 @@ async def execute_command(
         Dictionary with stdout, stderr, exit_code, is_error, and message.
     """
     client = get_client(region)
-    client.session_id = session_id
+    set_session_context(client, session_id)
 
     logger.info(f'Executing command in session {session_id}')
 
@@ -204,7 +204,7 @@ async def install_packages(
         Dictionary with stdout, stderr, exit_code, is_error, and message.
     """
     client = get_client(region)
-    client.session_id = session_id
+    set_session_context(client, session_id)
 
     logger.info(f'Installing packages in session {session_id}: {packages}')
 

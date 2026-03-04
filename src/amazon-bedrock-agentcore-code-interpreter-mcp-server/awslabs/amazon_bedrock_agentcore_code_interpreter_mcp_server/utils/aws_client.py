@@ -43,6 +43,27 @@ def get_default_identifier() -> str:
     return os.environ.get('CODE_INTERPRETER_IDENTIFIER', DEFAULT_IDENTIFIER)
 
 
+def set_session_context(
+    client: CodeInterpreter,
+    session_id: str,
+    identifier: str | None = None,
+) -> None:
+    """Set session context on the client before invoking operations.
+
+    Must set both session_id AND identifier. The SDK's invoke() method
+    auto-starts a new session if either is None, which would silently
+    execute on a new session instead of the intended one.
+
+    Args:
+        client: The CodeInterpreter client instance.
+        session_id: The session ID to operate on.
+        identifier: Code interpreter identifier. Defaults to
+            CODE_INTERPRETER_IDENTIFIER env var or 'aws.codeinterpreter.v1'.
+    """
+    client.session_id = session_id
+    client.identifier = identifier or get_default_identifier()
+
+
 def get_client(region: str | None = None) -> CodeInterpreter:
     """Get or create a cached CodeInterpreter client for the given region.
 

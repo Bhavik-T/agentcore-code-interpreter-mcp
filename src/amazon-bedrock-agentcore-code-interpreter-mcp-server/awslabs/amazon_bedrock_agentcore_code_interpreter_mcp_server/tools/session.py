@@ -19,7 +19,7 @@ from ..models.responses import (
     CodeInterpreterSessionSummary,
     SessionListResponse,
 )
-from ..utils.aws_client import get_client, get_default_identifier
+from ..utils.aws_client import get_client, get_default_identifier, set_session_context
 from loguru import logger
 from typing import Any
 
@@ -56,24 +56,34 @@ async def start_code_interpreter_session(
 
     logger.info(f'Starting code interpreter session with identifier={identifier}')
 
-    kwargs: dict[str, Any] = {
-        'identifier': identifier,
-    }
-    if name:
-        kwargs['name'] = name
-    if session_timeout_seconds:
-        kwargs['session_timeout_seconds'] = session_timeout_seconds
+    try:
+        kwargs: dict[str, Any] = {
+            'identifier': identifier,
+        }
+        if name:
+            kwargs['name'] = name
+        if session_timeout_seconds:
+            kwargs['session_timeout_seconds'] = session_timeout_seconds
 
-    # SDK start() returns the new session_id as a string
-    returned_session_id = client.start(**kwargs)
+        # SDK start() returns the new session_id as a string
+        returned_session_id = client.start(**kwargs)
 
-    response = CodeInterpreterSessionResponse(
-        session_id=returned_session_id or client.session_id or '',
-        status='READY',
-        code_interpreter_identifier=identifier,
-        message=f'Session started successfully. Session ID: {returned_session_id}',
-    )
-    return response.model_dump()
+        response = CodeInterpreterSessionResponse(
+            session_id=returned_session_id or client.session_id or '',
+            status='READY',
+            code_interpreter_identifier=identifier,
+            message=f'Session started successfully. Session ID: {returned_session_id}',
+        )
+        return response.model_dump()
+
+    except Exception as e:
+        logger.error(f'Failed to start session: {type(e).__name__}: {e}', exc_info=True)
+        return CodeInterpreterSessionResponse(
+            session_id='',
+            status='ERROR',
+            code_interpreter_identifier=identifier,
+            message=f'Failed to start session: {type(e).__name__}: {e}',
+        ).model_dump()
 
 
 async def stop_code_interpreter_session(
@@ -97,28 +107,38 @@ async def stop_code_interpreter_session(
 
     logger.info(f'Stopping session {session_id}')
 
-    # Set session context before stopping. SDK stop() returns bool and
-    # clears internal session state after the API call.
-    client.session_id = session_id
-    stopped = client.stop()
+    try:
+        # Set session context before stopping. SDK stop() returns bool and
+        # clears internal session state after the API call.
+        set_session_context(client, session_id, identifier)
+        stopped = client.stop()
 
-    if not stopped:
-        logger.warning(f'Stop returned False for session {session_id}')
+        if not stopped:
+            logger.warning(f'Stop returned False for session {session_id}')
 
-    # Verify actual status from the service
-    result = client.get_session(
-        interpreter_id=identifier,
-        session_id=session_id,
-    )
-    actual_status = result.get('status', 'UNKNOWN') if isinstance(result, dict) else 'UNKNOWN'
+        # Verify actual status from the service
+        result = client.get_session(
+            interpreter_id=identifier,
+            session_id=session_id,
+        )
+        actual_status = result.get('status', 'UNKNOWN') if isinstance(result, dict) else 'UNKNOWN'
 
-    response = CodeInterpreterSessionResponse(
-        session_id=session_id,
-        status=actual_status,
-        code_interpreter_identifier=identifier,
-        message=f'Session {session_id} stop requested. Status: {actual_status}.',
-    )
-    return response.model_dump()
+        response = CodeInterpreterSessionResponse(
+            session_id=session_id,
+            status=actual_status,
+            code_interpreter_identifier=identifier,
+            message=f'Session {session_id} stop requested. Status: {actual_status}.',
+        )
+        return response.model_dump()
+
+    except Exception as e:
+        logger.error(f'Failed to stop session {session_id}: {type(e).__name__}: {e}', exc_info=True)
+        return CodeInterpreterSessionResponse(
+            session_id=session_id,
+            status='ERROR',
+            code_interpreter_identifier=identifier,
+            message=f'Failed to stop session: {type(e).__name__}: {e}',
+        ).model_dump()
 
 
 async def get_code_interpreter_session(
@@ -142,19 +162,29 @@ async def get_code_interpreter_session(
 
     logger.info(f'Getting session {session_id}')
 
-    # SDK get_session() returns a Dict with session details
-    result = client.get_session(
-        interpreter_id=identifier,
-        session_id=session_id,
-    )
+    try:
+        # SDK get_session() returns a Dict with session details
+        result = client.get_session(
+            interpreter_id=identifier,
+            session_id=session_id,
+        )
 
-    response = CodeInterpreterSessionResponse(
-        session_id=session_id,
-        status=result.get('status', 'UNKNOWN') if isinstance(result, dict) else 'UNKNOWN',
-        code_interpreter_identifier=identifier,
-        message=f'Session {session_id} retrieved.',
-    )
-    return response.model_dump()
+        response = CodeInterpreterSessionResponse(
+            session_id=session_id,
+            status=result.get('status', 'UNKNOWN') if isinstance(result, dict) else 'UNKNOWN',
+            code_interpreter_identifier=identifier,
+            message=f'Session {session_id} retrieved.',
+        )
+        return response.model_dump()
+
+    except Exception as e:
+        logger.error(f'Failed to get session {session_id}: {type(e).__name__}: {e}', exc_info=True)
+        return CodeInterpreterSessionResponse(
+            session_id=session_id,
+            status='ERROR',
+            code_interpreter_identifier=identifier,
+            message=f'Failed to get session: {type(e).__name__}: {e}',
+        ).model_dump()
 
 
 async def list_code_interpreter_sessions(
@@ -182,33 +212,42 @@ async def list_code_interpreter_sessions(
 
     logger.info(f'Listing sessions for identifier={identifier}')
 
-    kwargs: dict[str, Any] = {
-        'interpreter_id': identifier,
-    }
-    if status:
-        kwargs['status'] = status
-    if max_results:
-        kwargs['max_results'] = max_results
-    if next_token:
-        kwargs['next_token'] = next_token
+    try:
+        kwargs: dict[str, Any] = {
+            'interpreter_id': identifier,
+        }
+        if status:
+            kwargs['status'] = status
+        if max_results:
+            kwargs['max_results'] = max_results
+        if next_token:
+            kwargs['next_token'] = next_token
 
-    # SDK list_sessions() returns a Dict with 'sessions' list and optional 'nextToken'
-    result = client.list_sessions(**kwargs)
+        # SDK list_sessions() returns a Dict with 'sessions' list and optional 'nextToken'
+        result = client.list_sessions(**kwargs)
 
-    sessions = []
-    raw_sessions = result.get('items', []) if isinstance(result, dict) else []
-    for s in raw_sessions:
-        sessions.append(
-            CodeInterpreterSessionSummary(
-                session_id=s.get('sessionId', ''),
-                status=s.get('status', 'UNKNOWN'),
-                name=s.get('name'),
+        sessions = []
+        raw_sessions = result.get('items', []) if isinstance(result, dict) else []
+        for s in raw_sessions:
+            sessions.append(
+                CodeInterpreterSessionSummary(
+                    session_id=s.get('sessionId', ''),
+                    status=s.get('status', 'UNKNOWN'),
+                    name=s.get('name'),
+                )
             )
-        )
 
-    response = SessionListResponse(
-        sessions=sessions,
-        next_token=result.get('nextToken') if isinstance(result, dict) else None,
-        message=f'Found {len(sessions)} session(s).',
-    )
-    return response.model_dump()
+        response = SessionListResponse(
+            sessions=sessions,
+            next_token=result.get('nextToken') if isinstance(result, dict) else None,
+            message=f'Found {len(sessions)} session(s).',
+        )
+        return response.model_dump()
+
+    except Exception as e:
+        logger.error(f'Failed to list sessions: {type(e).__name__}: {e}', exc_info=True)
+        return SessionListResponse(
+            sessions=[],
+            next_token=None,
+            message=f'Failed to list sessions: {type(e).__name__}: {e}',
+        ).model_dump()

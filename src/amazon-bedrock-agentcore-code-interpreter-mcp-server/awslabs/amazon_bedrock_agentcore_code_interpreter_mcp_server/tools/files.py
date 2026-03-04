@@ -16,7 +16,7 @@
 
 import base64
 from ..models.responses import FileOperationResult
-from ..utils.aws_client import get_client
+from ..utils.aws_client import get_client, set_session_context
 from loguru import logger
 from typing import Any
 
@@ -46,7 +46,7 @@ async def upload_file(
         Dictionary with path, is_error, and message.
     """
     client = get_client(region)
-    client.session_id = session_id
+    set_session_context(client, session_id)
 
     logger.info(f'Uploading file to session {session_id}: {path}')
 
@@ -102,7 +102,7 @@ async def download_file(
         Dictionary with path, content, is_error, and message.
     """
     client = get_client(region)
-    client.session_id = session_id
+    set_session_context(client, session_id)
 
     logger.info(f'Downloading file from session {session_id}: {path}')
 

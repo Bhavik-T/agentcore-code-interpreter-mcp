@@ -90,6 +90,24 @@ class TestStartCodeInterpreterSession:
         mock_client.start.assert_called_once_with(identifier='custom.v2')
 
 
+    @patch(f'{MODULE_PATH}.get_client')
+    @patch(f'{MODULE_PATH}.get_default_identifier', return_value='aws.codeinterpreter.v1')
+    async def test_start_session_returns_error_on_sdk_failure(self, mock_identifier, mock_get_client):
+        """Test starting a session returns structured error on SDK error."""
+        # Arrange
+        mock_client = MagicMock()
+        mock_client.start.side_effect = Exception('Access denied')
+        mock_get_client.return_value = mock_client
+
+        # Act
+        result = await session.start_code_interpreter_session()
+
+        # Assert — returns structured error, not exception
+        assert result['session_id'] == ''
+        assert result['status'] == 'ERROR'
+        assert 'Access denied' in result['message']
+
+
 class TestStopCodeInterpreterSession:
     """Test cases for stop_code_interpreter_session."""
 
@@ -137,19 +155,20 @@ class TestStopCodeInterpreterSession:
 
     @patch(f'{MODULE_PATH}.get_client')
     @patch(f'{MODULE_PATH}.get_default_identifier', return_value='aws.codeinterpreter.v1')
-    async def test_stop_session_propagates_error(self, mock_identifier, mock_get_client):
-        """Test stopping a session raises on SDK error."""
+    async def test_stop_session_returns_error_on_sdk_failure(self, mock_identifier, mock_get_client):
+        """Test stopping a session returns structured error on SDK error."""
         # Arrange
         mock_client = MagicMock()
         mock_client.stop.side_effect = Exception('Session not found')
         mock_get_client.return_value = mock_client
 
-        # Act & Assert
-        try:
-            await session.stop_code_interpreter_session(session_id='bad-session')
-            assert False, 'Expected exception'
-        except Exception as e:
-            assert 'Session not found' in str(e)
+        # Act
+        result = await session.stop_code_interpreter_session(session_id='bad-session')
+
+        # Assert — returns structured error, not exception
+        assert result['session_id'] == 'bad-session'
+        assert result['status'] == 'ERROR'
+        assert 'Session not found' in result['message']
 
 
 class TestGetCodeInterpreterSession:
@@ -189,6 +208,23 @@ class TestGetCodeInterpreterSession:
 
         # Assert
         assert result['status'] == 'UNKNOWN'
+
+    @patch(f'{MODULE_PATH}.get_client')
+    @patch(f'{MODULE_PATH}.get_default_identifier', return_value='aws.codeinterpreter.v1')
+    async def test_get_session_returns_error_on_sdk_failure(self, mock_identifier, mock_get_client):
+        """Test getting a nonexistent session returns structured error."""
+        # Arrange
+        mock_client = MagicMock()
+        mock_client.get_session.side_effect = Exception('Session not found: INVALID')
+        mock_get_client.return_value = mock_client
+
+        # Act
+        result = await session.get_code_interpreter_session(session_id='INVALID')
+
+        # Assert — returns structured error, not exception
+        assert result['session_id'] == 'INVALID'
+        assert result['status'] == 'ERROR'
+        assert 'Session not found' in result['message']
 
 
 class TestListCodeInterpreterSessions:
@@ -256,3 +292,20 @@ class TestListCodeInterpreterSessions:
         # Assert
         assert result['sessions'] == []
         assert result['next_token'] is None
+
+    @patch(f'{MODULE_PATH}.get_client')
+    @patch(f'{MODULE_PATH}.get_default_identifier', return_value='aws.codeinterpreter.v1')
+    async def test_list_sessions_returns_error_on_sdk_failure(self, mock_identifier, mock_get_client):
+        """Test listing sessions returns structured error on SDK error."""
+        # Arrange
+        mock_client = MagicMock()
+        mock_client.list_sessions.side_effect = Exception('Invalid token')
+        mock_get_client.return_value = mock_client
+
+        # Act
+        result = await session.list_code_interpreter_sessions(next_token='bad-token')
+
+        # Assert — returns structured error, not exception
+        assert result['sessions'] == []
+        assert result['next_token'] is None
+        assert 'Invalid token' in result['message']
